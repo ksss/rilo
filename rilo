@@ -1,0 +1,132 @@
+#! /usr/bin/env ruby
+# rilo is the text edtor write by mruby
+
+Editor = Struct.new(
+  :row,
+  :filename,
+  :cx,
+  :cy,
+  :rowoff,
+  :coloff,
+  :status_line,
+  :screenrows,
+  :screencols,
+)
+
+class Editor
+  module Key
+    CTRL_C = 3
+    CTRL_Q = 17
+    ESC = 27
+    LEFT_BLANKET = 91
+    ARROW_UP = 1000
+    ARROW_DOWN = 1001
+    ARROW_LEFT = 1002
+    ARROW_RIGHT = 1003
+    A = 65
+    B = 66
+    C = 67
+    D = 68
+  end
+
+  Exit = Class.new(StandardError)
+
+  def insert(ch)
+    row[cy].chars.insert(cx, ch.chr)
+    self.cx += 1
+  end
+
+  def refresh
+    buff = "\x1b[?25l\x1b[H"
+    row[rowoff, screenrows].each do |r|
+      buff << r.chars
+      buff << "\x1b[39m\x1b[0K\r\n"
+    end
+    buff << "\x1b[0K\x1b[7m#{rowoff + cy}:#{cx} - #{status_line}\x1b[0m\r\n"
+    buff << "\x1b[0K\e[#{cy+1};#{cx}H\e[?25h\r\n"
+    $stdout.print buff
+    self.status_line.clear
+  end
+
+  def process_keypress
+    $stdin.raw do |io|
+      ch = io.getc.ord
+      case ch
+      when Key::ESC
+        case io.getc.ord
+        when Key::LEFT_BLANKET
+          case io.getc.ord
+          when Key::A
+            if cy == 0
+              self.rowoff -= 1 if 0 < rowoff
+            else
+              self.cy -= 1
+            end
+          when Key::B
+            if filerow < numrows
+              if cy == screenrows - 1
+                self.rowoff += 1
+              else
+                self.cy += 1
+              end
+            end
+          when Key::C
+            self.cx += 1
+          when Key::D
+            self.cx -= 1
+          end
+        end
+      when Key::CTRL_C, Key::CTRL_Q
+        raise Exit
+      else
+        insert(ch)
+      end
+    end
+  end
+
+  def filerow
+    rowoff + cy
+  end
+
+  def numrows
+    row.length
+  end
+end
+
+Row = Struct.new(
+  :chars,
+)
+
+if ARGV.length < 1
+  raise "rilo filename"
+end
+
+E = Editor.new
+E.row = []
+E.filename = ARGV[0].dup
+E.cx = 0
+E.cy = 0
+E.rowoff = 0
+E.coloff = 0
+E.status_line = "status - line"
+E.screenrows, E.screencols = $stdin.winsize
+E.screenrows -= 2 # status bar
+if File.exist?(E.filename)
+  open(E.filename, 'r') do |f|
+    while line = f.gets
+      line.chomp!
+      row = Row.new(line)
+      E.row << row
+    end
+  end
+else
+  E.row << Row.new("This is rilo\n")
+end
+
+begin
+  while true
+    E.refresh
+    E.process_keypress
+  end
+rescue Editor::Exit
+end

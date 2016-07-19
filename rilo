@@ -1,95 +1,166 @@
-#! /usr/bin/env ruby
+#! /usr/bin/env ruby -r io/console
 # rilo is the text edtor write by mruby
 
-Editor = Struct.new(
-  :row,
-  :filename,
-  :cx,
-  :cy,
-  :rowoff,
-  :coloff,
-  :status_line,
-  :screenrows,
-  :screencols,
-)
-
-class Editor
+module Rilo
   module Key
     CTRL_C = 3
+    RETURN = 13
     CTRL_Q = 17
+    CTRL_S = 19
     ESC = 27
-    LEFT_BLANKET = 91
-    ARROW_UP = 1000
-    ARROW_DOWN = 1001
-    ARROW_LEFT = 1002
-    ARROW_RIGHT = 1003
     A = 65
     B = 66
     C = 67
     D = 68
+    LEFT_BLANKET = 91
+    BACKSPACE = 127
+    ARROW_UP = 1000
+    ARROW_DOWN = 1001
+    ARROW_LEFT = 1002
+    ARROW_RIGHT = 1003
   end
 
   Exit = Class.new(StandardError)
 
-  def insert(ch)
-    row[cy].chars.insert(cx, ch.chr)
-    self.cx += 1
-  end
-
-  def refresh
-    buff = "\x1b[?25l\x1b[H"
-    row[rowoff, screenrows].each do |r|
-      buff << r.chars
-      buff << "\x1b[39m\x1b[0K\r\n"
+  Editor = Struct.new(
+    :row,
+    :filename,
+    :cx,
+    :cy,
+    :rowoff,
+    :coloff,
+    :status_line,
+    :screenrows,
+    :screencols,
+    :dirty,
+  ) do
+    def insert(ch)
+      row[filerow].chars.insert(cx, ch.chr)
+      self.dirty = true
+      self.cx += 1
     end
-    buff << "\x1b[0K\x1b[7m#{rowoff + cy}:#{cx} - #{status_line}\x1b[0m\r\n"
-    buff << "\x1b[0K\e[#{cy+1};#{cx}H\e[?25h\r\n"
-    $stdout.print buff
-    self.status_line.clear
-  end
 
-  def process_keypress
-    $stdin.raw do |io|
-      ch = io.getc.ord
+    def del_char
+      row[filerow].chars[filecol-1] = ''
+      self.cx -= 1
+    end
+
+    def refresh
+      buff = "\x1b[?25l\x1b[H"
+      row[rowoff, screenrows].each do |r|
+        buff << r.chars[0, screencols]
+        buff << "\x1b[39m\x1b[0K\r\n"
+      end
+      if dirty
+        self.status_line << "(modified)"
+      end
+      buff << "\x1b[0K\x1b[7mrilo #{filerow}/#{row.length+1} - #{status_line}\x1b[0m\r\n" # loooooooooooooooooooooooooooooong
+      buff << "\x1b[0K\x1b[#{cy+1};#{cx+1}H\x1b[?25h"
+      $stdout.syswrite buff
+      self.status_line.clear
+    end
+
+    def cursol_move(ch)
+      r = filerow >= numrows ? nil : row[filerow]
       case ch
-      when Key::ESC
-        case io.getc.ord
-        when Key::LEFT_BLANKET
-          case io.getc.ord
-          when Key::A
-            if cy == 0
-              self.rowoff -= 1 if 0 < rowoff
-            else
-              self.cy -= 1
-            end
-          when Key::B
-            if filerow < numrows
-              if cy == screenrows - 1
-                self.rowoff += 1
-              else
-                self.cy += 1
-              end
-            end
-          when Key::C
-            self.cx += 1
-          when Key::D
-            self.cx -= 1
+      when Key::ARROW_UP
+        if cy == 0
+          self.rowoff -= 1 if 0 < rowoff
+        else
+          self.cy -= 1
+        end
+      when Key::ARROW_DOWN
+        if filerow < numrows
+          if cy == screenrows - 1
+            self.rowoff += 1
+          else
+            self.cy += 1
           end
         end
+      when Key::ARROW_RIGHT
+        if r && filecol < r.chars.length
+          if cx == screencols - 1
+            self.coloff += 1
+          else
+            self.cx += 1
+          end
+        elsif
+          self.cx = 0
+          self.coloff = 0
+          if cy == screenrows - 1
+            self.rowoff += 1
+          else
+            self.cy += 1
+          end
+        end
+      when Key::ARROW_LEFT
+        if cx == 0
+          if coloff > 0
+            self.coloff -= 1
+          else
+            if filerow > 0
+              self.cy -= 1
+              self.cx = row[filerow].chars.length;
+              if cx > screencols - 1
+                self.coloff = cx - screencols + 1
+                self.cx = screencols - 1
+              end
+            end
+          end
+        else
+          self.cx -= 1
+        end
+      end
+      if row[filerow] && filecol > row[filerow].chars.length
+        self.cx = row[filerow].chars.length
+      end
+    end
+
+    def save
+      open(filename, 'w+') do |f|
+        f.write "#{row.map(&:chars).join("\n")}\n"
+      end
+      self.dirty = false
+      self.status_line << "saved"
+    end
+
+    def process_keypress
+      ch = $stdin.getc.ord
+      case ch
+      when Key::ESC
+        case $stdin.getc.ord
+        when Key::LEFT_BLANKET
+          case $stdin.getc.ord
+          when Key::A then cursol_move(Key::ARROW_UP)
+          when Key::B then cursol_move(Key::ARROW_DOWN)
+          when Key::C then cursol_move(Key::ARROW_RIGHT)
+          when Key::D then cursol_move(Key::ARROW_LEFT)
+          end
+        end
+      when Key::BACKSPACE
+        del_char
+      when Key::CTRL_S
+        save
       when Key::CTRL_C, Key::CTRL_Q
         raise Exit
+      when Key::RETURN
+
       else
         insert(ch)
       end
     end
-  end
 
-  def filerow
-    rowoff + cy
-  end
+    def filerow
+      rowoff + cy
+    end
 
-  def numrows
-    row.length
+    def filecol
+      coloff + cx
+    end
+
+    def numrows
+      row.length
+    end
   end
 end
 
@@ -101,7 +172,7 @@ if ARGV.length < 1
   raise "rilo filename"
 end
 
-E = Editor.new
+E = Rilo::Editor.new
 E.row = []
 E.filename = ARGV[0].dup
 E.cx = 0
@@ -124,9 +195,13 @@ else
 end
 
 begin
-  while true
-    E.refresh
-    E.process_keypress
+  $stdin.raw do |io|
+    while true
+      E.refresh
+      E.process_keypress
+    end
   end
-rescue Editor::Exit
+rescue Rilo::Exit
+rescue => e
+  puts e.backtrace
 end

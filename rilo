@@ -41,8 +41,32 @@ module Rilo
     end
 
     def del_char
-      row[filerow].chars[filecol-1] = ''
-      self.cx -= 1
+      r = filerow >= numrows ? nil : row[filerow]
+      return if r.nil? || (filecol.zero? && filerow.zero?)
+      if filecol == 0
+        upper_chars = row[filerow-1].chars
+        upper_len = upper_chars.length
+        upper_chars << row[filerow].chars
+        row.delete_at(filerow)
+        if cy == 0
+          self.coloff -= 1
+        else
+          self.cy -= 1
+        end
+        self.cx = upper_len
+        if cx >= screencols
+          shift = screencols - cx + 1
+          self.cx -= shift
+          self.coloff += shift
+        end
+      else
+        row[filerow].chars[filecol-1] = ''
+        if cx.zero? && coloff
+          self.coloff -= 1
+        else
+          self.cx -= 1
+        end
+      end
     end
 
     def refresh
@@ -58,6 +82,23 @@ module Rilo
       buff << "\x1b[0K\x1b[#{cy+1};#{cx+1}H\x1b[?25h"
       $stdout.syswrite buff
       self.status_line.clear
+    end
+
+    def save
+      open(filename, 'w+') do |f|
+        f.write "#{row.map(&:chars).join("\n")}\n"
+      end
+      self.dirty = false
+      self.status_line << "saved"
+    end
+
+    def new_line
+      chars = row[filerow].chars
+      rest = chars.slice!(filecol..-1)
+      row.insert(filerow+1, Row.new(rest))
+      self.cy += 1
+      self.cx = 0
+      self.dirty = true
     end
 
     def cursol_move(ch)
@@ -116,14 +157,6 @@ module Rilo
       end
     end
 
-    def save
-      open(filename, 'w+') do |f|
-        f.write "#{row.map(&:chars).join("\n")}\n"
-      end
-      self.dirty = false
-      self.status_line << "saved"
-    end
-
     def process_keypress
       ch = $stdin.getc.ord
       case ch
@@ -144,7 +177,7 @@ module Rilo
       when Key::CTRL_C, Key::CTRL_Q
         raise Exit
       when Key::RETURN
-
+        new_line
       else
         insert(ch)
       end
@@ -191,7 +224,7 @@ if File.exist?(E.filename)
     end
   end
 else
-  E.row << Row.new("This is rilo\n")
+  E.row << Row.new("This is rilo")
 end
 
 begin

@@ -71,15 +71,20 @@ module Rilo
 
     def refresh
       buff = "\x1b[?25l\x1b[H"
-      row[rowoff, screenrows].each do |r|
-        buff << r.chars[0, screencols]
+      screenrows.times do |i|
+        r = row[i]
+        if r
+          buff << r.chars[0, screencols]
+        else
+          buff << "~"
+        end
         buff << "\x1b[39m\x1b[0K\r\n"
       end
       if dirty
         self.status_line << "(modified)"
       end
-      buff << "\x1b[0K\x1b[7mrilo #{filerow}/#{row.length+1} - #{status_line}\x1b[0m\r\n" # loooooooooooooooooooooooooooooong
-      buff << "\x1b[0K\x1b[#{cy+1};#{cx+1}H\x1b[?25h"
+      buff << "\x1b[0K\x1b[7mrilo #{filerow+1}/#{row.length+1} - #{status_line}\x1b[0m\r\n" # loooooooooooooooooooooooooooooong
+      buff << "\x1b[0K#{filerow}:#{filecol}\x1b[#{cy+1};#{cx+1}H\x1b[?25h"
       $stdout.syswrite buff
       self.status_line.clear
     end
@@ -93,9 +98,14 @@ module Rilo
     end
 
     def new_line
-      chars = row[filerow].chars
-      rest = chars.slice!(filecol..-1)
-      row.insert(filerow+1, Row.new(rest))
+      r = row[filerow]
+      if r
+        chars = row[filerow].chars
+        rest = chars.slice!(filecol..-1)
+        row.insert(filerow+1, Row.new(rest))
+      else
+        row << Row.new("")
+      end
       self.cy += 1
       self.cx = 0
       self.dirty = true
@@ -224,7 +234,7 @@ if File.exist?(E.filename)
     end
   end
 else
-  E.row << Row.new("This is rilo")
+  E.row << Row.new("")
 end
 
 begin
@@ -236,5 +246,6 @@ begin
   end
 rescue Rilo::Exit
 rescue => e
+  puts "#{e.class}: #{e.message}"
   puts e.backtrace
 end

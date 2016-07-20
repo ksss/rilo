@@ -1,6 +1,3 @@
-#! /usr/bin/env ruby -r io/console
-# rilo is the text edtor write by mruby
-
 module Rilo
   module Key
     CTRL_C = 3
@@ -22,6 +19,11 @@ module Rilo
 
   Exit = Class.new(StandardError)
 
+  Row = Struct.new(
+    :chars,
+  )
+
+
   Editor = Struct.new(
     :row,
     :filename,
@@ -34,6 +36,36 @@ module Rilo
     :screencols,
     :dirty,
   ) do
+    def run(argv)
+      if argv.length < 1
+        puts "rilo filename"
+        raise Exit
+      end
+      self.filename = argv[0].dup
+      if File.exist?(filename)
+        File.open(filename, 'r') do |f|
+          while line = f.gets
+            line.chomp!
+            self.row << Row.new(line)
+          end
+        end
+      else
+        self.row << Row.new("")
+      end
+
+      $stdin.raw do |io|
+        while true
+          refresh
+          process_keypress
+        end
+      end
+    rescue Rilo::Exit
+    rescue => e
+      puts "rilo's bug:"
+      puts "#{e.class}: #{e.message}"
+      e.backtrace.each { |i| puts i }
+    end
+
     def insert(ch)
       r = row[filerow]
       if r
@@ -212,46 +244,17 @@ module Rilo
   end
 end
 
-Row = Struct.new(
-  :chars,
-)
-
-if ARGV.length < 1
-  raise "rilo filename"
+def __main__(argv)
+  e = Rilo::Editor.new
+  e.row = []
+  e.cx = 0
+  e.cy = 0
+  e.rowoff = 0
+  e.coloff = 0
+  e.status_line = "status - line"
+  rows, cols = $stdin.winsize
+  e.screenrows = rows
+  e.screencols = cols
+  e.screenrows -= 2 # status bar
+  e.run(argv)
 end
-
-E = Rilo::Editor.new
-E.row = []
-E.filename = ARGV[0].dup
-E.cx = 0
-E.cy = 0
-E.rowoff = 0
-E.coloff = 0
-E.status_line = "status - line"
-E.screenrows, E.screencols = $stdin.winsize
-E.screenrows -= 2 # status bar
-if File.exist?(E.filename)
-  open(E.filename, 'r') do |f|
-    while line = f.gets
-      line.chomp!
-      row = Row.new(line)
-      E.row << row
-    end
-  end
-else
-  E.row << Row.new("")
-end
-
-begin
-  $stdin.raw do |io|
-    while true
-      E.refresh
-      E.process_keypress
-    end
-  end
-rescue Rilo::Exit
-rescue => e
-  puts "#{e.class}: #{e.message}"
-  e.backtrace.each { |i| puts i }
-end
-

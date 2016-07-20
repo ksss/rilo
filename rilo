@@ -72,7 +72,7 @@ module Rilo
     def refresh
       buff = "\x1b[?25l\x1b[H"
       screenrows.times do |i|
-        r = row[i]
+        r = row[rowoff + i]
         if r
           buff << r.chars[0, screencols]
         else

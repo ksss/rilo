@@ -35,7 +35,12 @@ module Rilo
     :dirty,
   ) do
     def insert(ch)
-      row[filerow].chars.insert(cx, ch.chr)
+      r = row[filerow]
+      if r
+        r.chars.insert(cx, ch.chr)
+      else
+        row[filerow] = Row.new(ch.chr)
+      end
       self.dirty = true
       self.cx += 1
     end

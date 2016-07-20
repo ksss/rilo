@@ -247,5 +247,6 @@ begin
 rescue Rilo::Exit
 rescue => e
   puts "#{e.class}: #{e.message}"
-  puts e.backtrace
+  e.backtrace.each { |i| puts i }
 end
+

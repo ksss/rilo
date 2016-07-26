@@ -1,7 +1,8 @@
 module Rilo
-  Row = Struct.new(
-    :chars,
-  )
+  module HighLight
+    NONE = 0
+    STRING = 1
+  end
 
   Editor = Struct.new(
     :row,
@@ -89,10 +90,21 @@ module Rilo
       buff = "\x1b[?25l\x1b[H"
       screenrows.times do |i|
         r = row[rowoff + i]
-        buff << if r
-                  r.chars[0, screencols]
-                else
-                  "~"
+        if r
+          current_color = -1
+          rowstr = r.chars[coloff, screencols]
+          if rowstr
+            rowstr.each_char.with_index do |ch, index|
+              color = r.color(coloff + index)
+              if color != current_color
+                buff << "\x1b[#{color}m"
+                current_color = color
+              end
+              buff << ch
+            end
+          end
+        else
+          buff << "~"
         end
         buff << "\x1b[39m\x1b[0K\r\n"
       end
@@ -100,7 +112,7 @@ module Rilo
         status_line << "(modified)"
       end
       buff << "\x1b[0K\x1b[7mrilo #{filerow + 1}/#{row.length + 1} - #{status_line}\x1b[0m\r\n" # loooooooooooooooooooooooooooooong
-      buff << "\x1b[0K#{filerow}:#{filecol}\x1b[#{cy + 1};#{cx + 1}H\x1b[?25h"
+      buff << "\x1b[0K#{rowoff}+#{cy}+#{screenrows}:#{coloff}+#{cx}+#{screencols}\x1b[#{cy + 1};#{cx + 1}H\x1b[?25h"
       $stdout.syswrite buff
       status_line.clear
     end
@@ -145,19 +157,21 @@ module Rilo
           end
         end
       when Key::ARROW_RIGHT
-        if r && filecol < r.chars.length
-          if cx == screencols - 1
-            self.coloff += 1
+        if r
+          if filecol < r.chars.length
+            if cx == screencols - 1
+              self.coloff += 1
+            else
+              self.cx += 1
+            end
           else
-            self.cx += 1
-          end
-        elsif
-          self.cx = 0
-          self.coloff = 0
-          if cy == screenrows - 1
-            self.rowoff += 1
-          else
-            self.cy += 1
+            self.cx = 0
+            self.coloff = 0
+            if cy == screenrows - 1
+              self.rowoff += 1
+            else
+              self.cy += 1
+            end
           end
         end
       when Key::ARROW_LEFT
@@ -167,7 +181,7 @@ module Rilo
           else
             if filerow > 0
               self.cy -= 1
-              self.cx = row[filerow].chars.length
+              self.cx = row[filerow] ? row[filerow].chars.length : 0
               if cx > screencols - 1
                 self.coloff = cx - screencols + 1
                 self.cx = screencols - 1

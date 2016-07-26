@@ -15,4 +15,8 @@ def __main__(argv)
   e.screencols = cols
   e.screenrows -= 2 # status bar
   e.run(argv)
+rescue => e
+  puts "rilo's bug:"
+  puts "#{e.class}: #{e.message}"
+  e.backtrace.each { |i| puts i }
 end

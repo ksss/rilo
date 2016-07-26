@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include "mruby.h"
 #include "mruby/array.h"
-#include "mruby/variable.h"
 
 int
 main(int argc, const char **argv)

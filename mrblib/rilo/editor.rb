@@ -140,7 +140,9 @@ module Rilo
     end
 
     def cursol_move(ch)
-      r = filerow >= numrows ? nil : row[filerow]
+      srow = filerow
+      scol = filecol
+      r = srow >= numrows ? nil : row[srow]
       case ch
       when Key::ARROW_UP
         if cy == 0
@@ -149,7 +151,7 @@ module Rilo
           self.cy -= 1
         end
       when Key::ARROW_DOWN
-        if filerow < numrows
+        if srow < numrows
           if cy == screenrows - 1
             self.rowoff += 1
           else
@@ -157,21 +159,19 @@ module Rilo
           end
         end
       when Key::ARROW_RIGHT
-        if r
-          if filecol < r.chars.length
-            if cx == screencols - 1
-              self.coloff += 1
-            else
-              self.cx += 1
-            end
+        if r && scol < r.chars.length
+          if cx == screencols - 1
+            self.coloff += 1
           else
-            self.cx = 0
-            self.coloff = 0
-            if cy == screenrows - 1
-              self.rowoff += 1
-            else
-              self.cy += 1
-            end
+            self.cx += 1
+          end
+        elsif r && scol == r.chars.length
+          self.cx = 0
+          self.coloff = 0
+          if cy == screenrows - 1
+            self.rowoff += 1
+          else
+            self.cy += 1
           end
         end
       when Key::ARROW_LEFT
@@ -179,9 +179,9 @@ module Rilo
           if coloff > 0
             self.coloff -= 1
           else
-            if filerow > 0
+            if srow > 0
               self.cy -= 1
-              self.cx = row[filerow] ? row[filerow].chars.length : 0
+              self.cx = row[srow-1].chars.length
               if cx > screencols - 1
                 self.coloff = cx - screencols + 1
                 self.cx = screencols - 1
@@ -193,7 +193,11 @@ module Rilo
         end
       end
       if row[filerow] && filecol > row[filerow].chars.length
-        self.cx = row[filerow].chars.length
+        self.cx -= filecol - row[filerow].chars.length
+        if (cx < 0)
+          self.coloff += cx
+          self.cx = 0
+        end
       end
     end
 
